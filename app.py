@@ -1,16 +1,16 @@
 import os
 import streamlit as st
 from langchain_community.document_loaders import TextLoader
-from langchain_community.vectorstores import Chroma
+from langchain.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain.chains import RetrievalQA
 
 openai_api_key = st.secrets["OPENAI_API_KEY"]
 st.set_page_config(page_title="Thailand Relocation Assistant", layout="wide")
 
-# 🎨 Custom CSS
+# 🎨 CSS
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Noto+Sans:wght@400;500;700;900&display=swap');
@@ -68,24 +68,23 @@ with st.sidebar:
         "🔹 Loaded .txt files using TextLoader",
         "🔹 Split them with RecursiveCharacterTextSplitter",
         "🔹 Embedded text with OpenAIEmbeddings",
-        "🔹 Stored chunks in Chroma vector DB",
-        "🔹 Created RetrievalQA with ChatOpenAI",
-        "🔹 Built interface using Streamlit",
-        "🔹 Styled it to look like Stitch",
-        "🔹 Stored API key in st.secrets"
+        "🔹 Stored in FAISS (no server needed)",
+        "🔹 Used RetrievalQA with ChatOpenAI",
+        "🔹 Built with Streamlit and styled like Stitch",
+        "🔹 Stored key in st.secrets"
     ]
     for step in steps:
         st.markdown(f"<div class='sidebar-item'>{step}</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='sidebar-header'>Tools Used</div>", unsafe_allow_html=True)
     tools = [
-        "Streamlit", "LangChain", "ChromaDB", "OpenAI API", "TextLoader",
-        "RecursiveCharacterTextSplitter", "RetrievalQA", "Local filesystem", "st.secrets"
+        "Streamlit", "LangChain", "FAISS", "OpenAI API", "TextLoader",
+        "RecursiveCharacterTextSplitter", "RetrievalQA", "Local Files", "st.secrets"
     ]
     for tool in tools:
         st.markdown(f"<div class='sidebar-item'>{tool}</div>", unsafe_allow_html=True)
 
-# 🎉 Hero
+# 🎉 Hero banner
 st.markdown("""
 <div class="hero">
     <h2 style="font-size: 1.8rem; font-weight: 700; margin-bottom: 0.5rem;">
@@ -97,15 +96,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 📂 Paths
+# 📂 Load documents
 docs_directory = "thai_docs"
-persist_directory = "vectorstore"
 
 @st.cache_resource
 def load_vectorstore():
     embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
-    if os.path.exists(persist_directory):
-        return Chroma(persist_directory=persist_directory, embedding_function=embeddings)
     all_docs = []
     for filename in os.listdir(docs_directory):
         if filename.endswith(".txt"):
@@ -113,9 +109,7 @@ def load_vectorstore():
             all_docs.extend(loader.load())
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     documents = splitter.split_documents(all_docs)
-    vectorstore = Chroma.from_documents(documents, embeddings, persist_directory=persist_directory)
-    vectorstore.persist()
-    return vectorstore
+    return FAISS.from_documents(documents, embeddings)
 
 def get_chain():
     vectorstore = load_vectorstore()
@@ -123,14 +117,14 @@ def get_chain():
     llm = ChatOpenAI(openai_api_key=openai_api_key, temperature=0)
     return RetrievalQA.from_chain_type(llm=llm, retriever=retriever, return_source_documents=True)
 
-# 🧠 State setup
+# 🧠 App state
 if "chain" not in st.session_state:
     st.session_state.chain = get_chain()
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-# 💬 Input Form
+# 💬 Chat form
 sources = []
 with st.form(key="chat_form", clear_on_submit=True):
     user_input = st.text_input("Ask me anything about Thailand:", key="user_input_form")
@@ -146,11 +140,11 @@ if submit and user_input:
         st.session_state.chat_history.append(("Bot", answer))
         st.session_state.chat_history.append(("Bot", "💬 Ready for your next question?"))
 
-# 💬 Chat history
+# 💬 Show chat
 for role, message in st.session_state.chat_history:
     st.markdown(f"**{role}:** {message}", unsafe_allow_html=True)
 
-# 📄 Source viewer
+# 📄 Show sources
 if sources:
     with st.expander("📄 Sources"):
         for doc in sources:
